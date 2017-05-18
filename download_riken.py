@@ -95,6 +95,10 @@ def listfiles(directory, filetypes, localfiles):
 		fndict["mol"] = re.findall(molptn, filecontent)
 	return fndict
 
+def list_localfiles(directory,filetypes):
+	a=1
+
+
 if __name__ == '__main__':
 	"""
 	Args parsing
@@ -151,8 +155,6 @@ if __name__ == '__main__':
 			print(line[:-2], end="\r")
 		except Exception as e:
 			print(e)
-		if i == 500:
-			break
 	nbfiles = dlq.qsize()
 	print("\nStarting downloads...")
 	threads = []
