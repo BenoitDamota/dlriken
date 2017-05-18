@@ -170,7 +170,9 @@ if __name__ == '__main__':
 					dlq.put({"url":fn,"path":ldir+"/"+ft+"/"+tgt})
 			print(line[:-2], end="\r")
 		except Exception as e:
+			print("Error: ", end = "")
 			print(e)
+
 	nbfiles = dlq.qsize()
 	print("\nStarting downloads...")
 	threads = []
