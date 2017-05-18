@@ -81,7 +81,7 @@ def parse_rk_index():
 	nbmols = (int)(re.search(countpattern,indexhtml).group())
 	return dirs, nbmols
 	
-def listfiles(directory, filetypes, localfiles):
+def list_rikenfiles(directory, filetypes, localfiles):
 	filecontent = download_http("http://pubchemqc.riken.jp/" + directory)
 	fndict = {}
 	if "log" in filetypes:
@@ -93,10 +93,26 @@ def listfiles(directory, filetypes, localfiles):
 	if "mol" in filetypes:
 		molptn = re.compile("(?<=href\=\")Compound.*\.mol(?=\")")
 		fndict["mol"] = re.findall(molptn, filecontent)
+	fndict["mol"].sort()
+	ptn = re.compile("(?<=\/)\d*\..*")
+	for ft in fndict:
+		torm = []
+		for fn in fndict[ft]:
+			localfn = re.search(ptn,fn).group()
+			if localfn in localfiles:
+				torm.append(fn)
+				localfiles.remove(localfn)
+		fndict[ft] = [fn for fn in fndict[ft] if fn not in torm]
 	return fndict
 
 def list_localfiles(directory,filetypes):
-	a=1
+	res = []
+	for root, dirs, files in os.walk(directory):
+		for file in files:
+			for ft in filetypes:			
+				if file.endswith(ft):
+					res.append(file)
+	return res
 
 
 if __name__ == '__main__':
@@ -139,12 +155,12 @@ if __name__ == '__main__':
 	fnptn = re.compile("\d*\..*")
 	for i, rd in enumerate(rikendirs):
 		try:
-			localfiles = None
 			ldir = re.search(pat,rd).group()
 			for ft in ftypes:
-				if not os.path.exists(rootpath + ldir + ft):
-					os.makedirs(rootpath + ldir + "/" + ft)					
-			ldirfns = listfiles(directory=rd, filetypes=ftypes, localfiles=localfiles)				
+				if not os.path.exists(rootpath + ldir + "/" + ft):
+					os.makedirs(rootpath + ldir + "/" + ft)
+			localfiles = list_localfiles(directory=rootpath + ldir + "/",filetypes=ftypes)
+			ldirfns = list_rikenfiles(directory=rd, filetypes=ftypes, localfiles=localfiles)				
 			line = str(i+1) + " out of " + str(len(rikendirs)) + " directories explored so far, "
 			for ft in ftypes:
 				fcount[ft] += len(ldirfns[ft])
