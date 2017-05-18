@@ -93,7 +93,6 @@ def list_rikenfiles(directory, filetypes, localfiles):
 	if "mol" in filetypes:
 		molptn = re.compile("(?<=href\=\")Compound.*\.mol(?=\")")
 		fndict["mol"] = re.findall(molptn, filecontent)
-	fndict["mol"].sort()
 	ptn = re.compile("(?<=\/)\d*\..*")
 	for ft in fndict:
 		torm = []
