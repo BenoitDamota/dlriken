@@ -25,28 +25,30 @@ def test_access(path):
 	os.remove(testfile)
 	return res
 
-def files_lister(fq,fileNameQueue,pattern,index,localids):
-	pattern = re.compile(pattern)
-	p2 = re.compile("\d*(?=\..)")
-	while True:
-		f = fq.get()
-		filenames = re.findall(pattern,f)
-		last = filenames[0]
-		for filename in filenames:
-			if filename != last:
-				if not (int)(re.search(p2,filename).group()) in localids:
-					last = filename
-					fileNameQueue.put(index+filename)
-				else:
-					localids.remove((int)(re.search(p2,filename).group()))
-		fq.task_done()
-		if fq.qsize() == 0:
-			time.sleep(1)
+def files_lister(rikendirs,dlq,rootpath,ftypes):
+	pat = re.compile("\d+_\d*")
+	fnptn = re.compile("\d*\..*")
+	for i, rd in enumerate(rikendirs):
+		try:
+			ldir = re.search(pat,rd).group()
+			for ft in ftypes:
+				if not os.path.exists(rootpath + ldir + "/" + ft):
+					os.makedirs(rootpath + ldir + "/" + ft)
+			localfiles = list_localfiles(directory=rootpath + ldir + "/",filetypes=ftypes)
+			ldirfns = list_rikenfiles(directory=rd, filetypes=ftypes, localfiles=localfiles)				
+			for ft in ftypes:
+				fcount[ft] += len(ldirfns[ft])
+				for fn in ldirfns[ft]:
+					tgt = re.search(fnptn,fn).group()
+					dlq.put({"url":fn,"path":ldir+"/"+ft+"/"+tgt})
+		except Exception as e:
+			print("Error: ", end = "")
+			print(e, end = "\n")
 
 def download_threadfunct(filequeue,rootpath):
 	headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
 	sess = requests.session()
-	while filequeue.qsize() > 0:
+	while True:
 		try:
 			d = filequeue.get()
 			response = sess.get("http://pubchemqc.riken.jp/" + d["url"])
@@ -73,7 +75,7 @@ def download_http(url):
 		print("Exception in download_http:")
 		print(e, file=sys.stderr)
 
-def parse_rk_index():
+def get_riken_index():
 	dirpattern = re.compile("Compound.*\.html")
 	countpattern = re.compile("(?<=Currently )\d*(?= molecules are available on this site)")
 	indexhtml = download_http("http://pubchemqc.riken.jp/")
@@ -146,52 +148,32 @@ if __name__ == '__main__':
 		fcount["mol"] = 0
 
 	print("Getting Riken index...")
-	rikendirs, nbmols = parse_rk_index()
+	rikendirs, nbmols = get_riken_index()
+	dlq = Queue()	
+	print("Starting files listing thread...")
+	flt = threading.Thread(target=files_lister, args=(rikendirs,dlq,rootpath,ftypes))
+	flt.daemon = True
+	flt.start()
 
-	print("Exploring riken directories to list all files to be downloaded, this may take several minutes.")
-	dlq = Queue()
-	pat = re.compile("\d+_\d*")
-	fnptn = re.compile("\d*\..*")
-	for i, rd in enumerate(rikendirs):
-		try:
-			ldir = re.search(pat,rd).group()
-			for ft in ftypes:
-				if not os.path.exists(rootpath + ldir + "/" + ft):
-					os.makedirs(rootpath + ldir + "/" + ft)
-			localfiles = list_localfiles(directory=rootpath + ldir + "/",filetypes=ftypes)
-			ldirfns = list_rikenfiles(directory=rd, filetypes=ftypes, localfiles=localfiles)				
-			line = str(i+1) + " out of " + str(len(rikendirs)) + " directories explored so far, "
-			for ft in ftypes:
-				fcount[ft] += len(ldirfns[ft])
-				line += str(fcount[ft]) + " " + ft + " files found, "
-				for fn in ldirfns[ft]:
-					tgt = re.search(fnptn,fn).group()
-					dlq.put({"url":fn,"path":ldir+"/"+ft+"/"+tgt})
-			print(line[:-2], end="\r")
-		except Exception as e:
-			print("Error: ", end = "")
-			print(e)
+	while dlq.qsize() == 0:
+		print("Waiting for first downloads to start...", end = "\r")
+		time.sleep(0.3)
 
-	nbfiles = dlq.qsize()
-	print("\nStarting downloads...")
+	print("Starting download threads...")
 	threads = []
 	for i in range(3):
 		t = threading.Thread(target=download_threadfunct, args=(dlq,rootpath))
 		threads.append(t)
 		t.daemon = True
 		t.start()
+
 	start = time.time()
-	while nbfiles-dlq.qsize() == 0:
-		print("Waiting for downloads to start...", end = "\r")
-		time.sleep(0.2)
 	print("Downloads started.")
 	while dlq.qsize() > 0:
+		nbfiles = dlq.qsize()
 		now = time.time()
 		percentdone = 100 * (nbfiles-dlq.qsize()) / nbfiles 
-		print(str(percentdone)[:4] + "% done in " + str(int(now-start)) + " seconds.", end = "\r")
+		print(str(percentdone)[:4] + "% done in " + str(int(now-start)) + " seconds, " + str(dlq.qsize()) + " files left to download.", end = "\r")
 		time.sleep(1)
-	print("Waiting for the last downloads to end...")
-	for t in threads:
-		t.join()
 	print("Downloads finished. Quitting.")
 	
