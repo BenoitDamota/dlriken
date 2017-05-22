@@ -169,7 +169,7 @@ if __name__ == '__main__':
 
 	start = time.time()
 	print("Downloads started.")
-	while dlq.qsize() > 0:
+	while flt.isAlive():
 		nbfiles = dlq.qsize()
 		now = time.time()
 		percentdone = 100 * (nbfiles-dlq.qsize()) / nbfiles 
